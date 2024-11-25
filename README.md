@@ -1,6 +1,8 @@
 # Species Outlier Detection Using Random Forest
 
-This repository provides two Python implementations for outlier detection from species observation data using species distribution modeling (SDM) and machine learning models (Random Forest & three unsupervised models). The workflow includes data preparation, spatial sampling for background data, environmental enrichment, model training, evaluation, and visualization of results. The model integrates CORINE data, raster-based environmental variables, and occurrence data to predict species probabilities.
+This repository provides two Python implementations for outlier detection from species observation data using species distribution modeling (SDM) and machine learning models (Random Forest & three unsupervised models). The workflow includes data preparation, spatial sampling for background data, environmental enrichment, model training, evaluation, and visualization of results. The model integrates re-classified CORINE data, raster-based environmental variables, and occurrence data to predict species probabilities.
+
+NOTE: Raster datasets are not in this repository as they were too large (> 1 GB). You can download them from the data download services by SYKE, NLS-FI, FMI and LUKE. 
 
 ## How to use
 
@@ -30,4 +32,6 @@ feature_columns = ['x', 'y', 'Urban', 'Park', 'Rural', 'Forest', 'Open forest', 
 
 ### Models' outputs
 1. Predicted probabilities [0,1] and classifidications (0 for outliers, 1 for inliers) for each observation. Note that all models report false-positive outliers, meaning that models always find outliers even from the data that doesn't have any real outliers.
-2. Predicted probabilities are visualised to the map and stored to a GeoPackage file. 
+2. You can visualise predicted probabilities to the map or store them as a GeoPackage file.
+
+![image](https://github.com/user-attachments/assets/56602a50-2917-43b9-a3c9-bcd12409db51)
