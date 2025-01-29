@@ -1,18 +1,109 @@
 import numpy as np
 import rasterio
 from shapely.geometry import box
-import pandas as pd, geopandas as gpd
+import pandas as pd
+import geopandas as gpd
 from rasterio.mask import mask
 from typing import Union, Tuple
-import pyproj
 from elapid.types import Vector
 from shapely.geometry import Polygon, MultiPolygon, GeometryCollection, Point, LineString, MultiPoint, MultiLineString
 from scipy.spatial import KDTree
-import warnings
-from pyinaturalist import *
 from load_data import fetch_json_with_retry
+import matplotlib.pyplot as plt
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix
+import os, csv, rasterio, pyproj, warnings
+from sklearn.model_selection import GridSearchCV
+import seaborn as sns
 
 warnings.filterwarnings('ignore')
+
+# Helper function for Grid Search
+def perform_grid_search(model, param_grid, X_train, y_train, weights_train, cv, scoring='roc_auc'):
+    grid_search = GridSearchCV(
+        estimator=model, param_grid=param_grid, cv=cv,
+        scoring=scoring, n_jobs=-1
+    )
+    grid_search.fit(X_train, y_train, sample_weight=weights_train)
+    return grid_search.best_estimator_
+
+def find_highly_correlated_features(X, threshold=0.9):
+    # Compute correlation matrix
+    corr_matrix = X.corr().abs()
+
+    # Create a heatmap
+    plt.figure(figsize=(12, 8))
+    sns.heatmap(corr_matrix, annot=True, cmap="coolwarm", fmt=".2f", linewidths=0.5)
+    plt.title("Feature Correlation Heatmap")
+    plt.show()
+
+    # Find highly correlated features (threshold > 0.8)
+    high_corr_features = []
+    
+    for i in range(len(corr_matrix.columns)):
+        for j in range(i):
+            if corr_matrix.iloc[i, j] > threshold:
+                feature = corr_matrix.columns[i]
+                high_corr_features.append(feature)
+
+    print(f"Highly correlated features (correlation > {threshold}) to drop: {high_corr_features}")
+    return high_corr_features
+
+# explicit function to normalize array
+def normalize(arr, t_min=0, t_max=1):
+    norm_arr = []
+    diff = t_max - t_min
+    diff_arr = max(arr) - min(arr)    
+    for i in arr:
+        temp = (((i - min(arr))*diff)/diff_arr) + t_min
+        norm_arr.append(temp)
+    return norm_arr
+
+def get_statistics(model, model_name, species_name, y_test, predictions, probs):
+    """
+    Print performance statistics for a model and save results to a CSV file.
+    """
+    
+    # Extract hyperparameters
+    model_params = model.get_params()
+    
+    # Calculate performance metrics
+    accuracy = accuracy_score(y_test, predictions)
+    precision = precision_score(y_test, predictions)
+    recall = recall_score(y_test, predictions)
+    f1 = f1_score(y_test, predictions)
+    roc_auc = roc_auc_score(y_test, probs) if probs is not None else None
+
+    # Prepare row for saving
+    result_row = {
+        'Species': species_name,
+        'Model': model_name,
+        'Hyperparameters': model_params,
+        'Accuracy': accuracy,
+        'Precision': precision,
+        'Recall': recall,
+        'F1 Score': f1,
+        'ROC-AUC': roc_auc
+    }
+
+    return result_row
+
+def save_results_to_csv(csv_file, result_row):
+
+    # Define the CSV file path
+    file_exists = os.path.isfile(csv_file)
+    
+    # Save results to a CSV file
+    with open(csv_file, 'a', newline='') as csvfile:
+        fieldnames = ['Species', 'Model', 'Hyperparameters', 'Accuracy', 'Precision', 'Recall', 'F1 Score', 'ROC-AUC']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        
+        # Write the header only if the file is new
+        if not file_exists:
+            writer.writeheader()
+        
+        # Write the current result row
+        writer.writerow(result_row)
+
 
 def extract_raster_values_with_buffer(gdf, paths, buffer_distance=100):
     """
@@ -137,8 +228,6 @@ def remove_duplicates(gdf, grid_size=100):
     # Create a grid covering the study area
     grid_gdf = create_grid(gdf, grid_size=grid_size)
 
-    print("grid created")
-
     # Spatial join between points and grid
     points_in_grid = gpd.sjoin(gdf, grid_gdf, how='left', predicate='within')
 
@@ -173,6 +262,7 @@ def create_grid(gdf, grid_size=1000):
     
     # Create a GeoDataFrame for the grid
     grid = gpd.GeoDataFrame({'geometry': grid_cells}, crs=gdf.crs)
+    print(f"A grid of {grid_size} meter squares was created")
     return grid
 
 def calculate_land_cover_proportions(gdf, raster_path, buffer_size=100):
@@ -388,7 +478,9 @@ def stack_geodataframes(presence: Vector, background: Vector, add_class_label: b
     Returns:
         merged GeoDataFrame with all geometries projected to the same crs.
     """
-
+    presence = presence.copy()
+    background = background.copy()
+    
     validate_gpd(presence)
     validate_gpd(background)
 
@@ -574,54 +666,66 @@ def distance_weights(points: Vector, n_neighbors: int = -1, center: str = "media
 
     return weights
 
-def get_similar_species_id_from_inat(finbif_taxon_id, access_token, number_of_species=5):
+def get_tss(y_test, predictions):
     """
-    Fetches the closest similar species ID from the FinBIF database by leveraging iNaturalist's 
-    similar species API. 
+    Calculate the True Skill Statistic (TSS) using prediction results and y_test.
     
     Parameters:
-        finbif_taxon_id (str): The FinBIF taxon ID of the species.
-        access_token (str): Access token for the FinBIF API.
-        number_of_species (int): Number to describe how many similar species IDs you want. Default 5
-        
-    Returns:
-        str: The FinBIF taxon ID of the most similar species.
-    """
-
-    # Get scientific name for the given FinBIF taxon ID
-    url = f'https://api.laji.fi/v0/taxa/{finbif_taxon_id}?lang=en&langFallback=true&maxLevel=0&selectedFields=scientificName&access_token={access_token}'
-    results = fetch_json_with_retry(url)
-    scientific_name = results['scientificName']
-
-    # Search for the species in iNaturalist using the scientific name
-    response = get_taxa(q=scientific_name)['results']
-    inat_id = response[0]['id']
-
-    # Retrieve similar species from iNaturalist's Finnish observations based on the matched species
-    similar_species_url = f'https://api.inaturalist.org/v1/identifications/similar_species?place_id=7020&taxon_id={inat_id}'
-    similar_species_json = fetch_json_with_retry(similar_species_url)
+    y_test (array-like): True labels.
+    predictions (array-like): Predicted labels.
     
-    if not similar_species_json: # Try to search similar species globally
-        similar_species_url = f'https://api.inaturalist.org/v1/identifications/similar_species?&taxon_id={inat_id}'
-        similar_species_json = fetch_json_with_retry(similar_species_url)
-        
-    most_similar_taxon_names = []
-    for i in range(number_of_species):
-        try:
-            taxon_name = similar_species_json['results'][i]['taxon']['name'] # TODO: Add percentages maybe?
-            most_similar_taxon_names.append(taxon_name)
-        except:
-            print(f"Only {i} similar taxons found instead of {number_of_species}")
-            break
+    Returns:
+    float: TSS value.
+    """
+    tn, fp, fn, tp = confusion_matrix(y_test, predictions).ravel()
+    sensitivity = tp / (tp + fn)
+    specificity = tn / (tn + fp)
+    tss = sensitivity + specificity - 1
+    return tss
 
-    print(f"Most similar taxon names on iNaturalist are: {most_similar_taxon_names}")
+def visualise_feature_importances(model, feature_columns):
+    """
+    Visualize the feature importances from a trained RandomForest model and return the top 5 feature indexes.
+    
+    Parameters:
+    model (RandomForestClassifier): Trained RandomForest model.
+    feature_columns (list): List of feature column names.
+    
+    Returns:
+    list: Indexes of the top 5 important features.
+    """
+    importances = model.feature_importances_
+    indices = np.argsort(importances)[::-1]
+    top5_indices = indices[:5]
 
-    # Find the FinBIF ID for the similar species name identified on iNaturalist
-    most_similar_taxon_finbif_ids = []
-    for taxon_name in most_similar_taxon_names:
-        finbif_search_url = f"https://api.laji.fi/v0/taxa/search?query={taxon_name}&limit=10&onlySpecies=false&onlyFinnish=false&onlyInvasive=false&observationMode=false&access_token={access_token}"
-        results = fetch_json_with_retry(finbif_search_url)
-        taxon_id = results[0]['id']
-        most_similar_taxon_finbif_ids.append(taxon_id)
+    # Plot the feature importances
+    plt.figure(figsize=(10, 6))
+    plt.title("Feature Importances")
+    plt.bar(range(len(importances)), importances[indices], align="center")
+    plt.xticks(range(len(importances)), [feature_columns[i] for i in indices], rotation=90)
+    plt.tight_layout()
+    plt.show()
 
-    return most_similar_taxon_finbif_ids
+    return top5_indices
+
+def plot_results(gdf, bird_name, save=True):
+    """
+    Plot and save anomaly detection results.
+    """
+    fig, axes = plt.subplots(1, 4, figsize=(19, 6))
+    columns = ['rf_probability', 'gb_probability', 'me_probability', 'probability']
+    titles = [
+        'Random Forest', 'Histogram Gradient Boosting', 
+        'MaxEnt', 'Combined Average'
+    ]
+    
+    for ax, col, title in zip(axes, columns, titles):
+        gdf.plot(column=col, cmap='coolwarm', legend=True, markersize=5, ax=ax)
+        ax.set_title(title)
+    
+    plt.tight_layout()
+    plt.show()
+
+    if save==True:
+        os.makedirs('data_results/images2', exist_ok=True)
+        fig.savefig(f'data_results/images2/{bird_name}.png')

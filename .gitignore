@@ -1,6 +1,6 @@
-data_env\*.tif
-data_env\*.aux.xml
-data_results\
-data*obs\
+data_env\*
+data_results\*
+data_obs\*
 __pycache__
 .env
+model_statistics.csv
