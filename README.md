@@ -1,22 +1,5 @@
 # Species Outlier Detection Using Machine Learning
-## File References
 
-The repository includes the following Jupyter notebooks for different models:
-
-1. **Unsupervised models**
-    - [unsupervised_models.ipynb](unsupervised_models.ipynb)
-    - Uses FinBIF occurrence data from [api.laji.fi](https://api.laji.fi) and several local raster data sets
-    - Flags unlike observations as outliers without separate training data
-
-2. **Random Forest (RF)**
-    - [random_forest_with_background_samples.ipynb](random_forest_with_background_samples.ipynb)
-    - Uses FinBIF occurrence data from [api.laji.fi](https://api.laji.fi) and several local raster data sets
-    - Flags unlike observations as outliers from the testing data
-
-3. **Supervised models for bird atlas data**
-    - [multiple_models_YKJ_squares.ipynb](multiple_models_YKJ_squares.ipynb)
-    - Uses bird atlas data, 10 km x 10 km YKJ squares and environmental data in one preprocessed file
-    - Predicts probabilities for each bird for 10 km x 10 km squares
 This repository provides implementations for outlier detection in species observation data from Finnish Biodiversity Information Facility (FinBIF) using species distribution modeling (SDM) and machine learning models. The workflow depends on the model, but usually includes data preparation, spatial sampling for background data, environmental enrichment, model training, evaluation, and visualization of results. The models integrate re-classified CORINE land cover data, raster-based environmental variables, and occurrence data to predict species probabilities and identify potential outliers.
 
 ## Models Used
@@ -46,10 +29,10 @@ Due to size constraints (>1 GB), raster datasets are not included in this reposi
 - **CORINE Land Cover 2018 (25 ha resolution), reclassified**: [SYKE Open Data](https://www.syke.fi/fi-FI/Avoin_tieto/Paikkatietoaineistot/Ladattavat_paikkatietoaineistot)
 - **Elevation Model (25m x 25m)**: [National Land Survey of Finland (NLS-FI)](https://paituli.csc.fi/download.html)
 - **Monthly Mean Temperature (1961-2023, 10km x 10km resolution)**: [Finnish Meteorological Institute (FMI)](https://paituli.csc.fi/download.html)
-- **Monthly Precipitation (1961-2023, 10km x 10km resolution)**: [FMI Open Data](https://paituli.csc.fi/download.html)
+- **Monthly Precipitation (1961-2023, 10km x 10km resolution)**: [Finnish Meteorological Institute (FMI)](https://paituli.csc.fi/download.html)
 - **Forest Biomass Data (m3/ha)**: [Natural Resources Institute Finland (LUKE)](https://kartta.luke.fi/opendata/valinta.html)
 - **Coastline Length Calculation (YKJ 10km x 10km grids)**: Calculated from [SYKE Ranta10 dataset](https://www.syke.fi/fi-FI/Avoin_tieto/Paikkatietoaineistot/Ladattavat_paikkatietoaineistot)
-- **YKJ 10 km x 10 km squares**: 
+- **YKJ 10 km x 10 km squares**:  [FinBIF](https://cdn.laji.fi/files/YKJ/YKJ10km_polygons.zip)
 
 All data sets have been preprocessed. Read more: [ML methods for outlier detection](https://github.com/AlpoTurunen/FinBIF_Outlier_Detection/blob/main/ML_methods_for_outlier_detection.pdf)
 
@@ -99,3 +82,8 @@ For [random_forest_with_background_samples.ipynb](random_forest_with_background_
 | **Advantages**                    | No need for separate training or absence data. <br> Easy to use for selected variables. | Well-supported by research. <br> Allows reliability assessment using statistical metrics. | Uses high-quality Bird Atlas data. <br> Produces clear results. <br> Allows reliability assessment using statistical metrics. |
 | **Challenges**                     | Difficult to assess model performance without comparison data. <br> Sensitive to parameter choices. <br> Accuracy depends on observation location precision. <br> Differences between models. | Sensitive to parameter choices. <br> Requires generation of absence data, as real absence data is available only for a few species (e.g., butterflies). | Variation within 10 km x 10 km grid cells may be greater than between them. <br> Requires extensive data preprocessing. <br> Predicts breeding probability rather than direct observation reliability. <br> Differences between models. |
 
+## Contact Information and licence
+
+For further inquiries, please contact me. Also feel free to use this code in a way you want.
+
+> **Note:** I'm not a biologist or machine learning specialist. Do not trust the models.
